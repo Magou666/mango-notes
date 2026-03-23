@@ -23,7 +23,8 @@
 
 ## 📸 截图
 
-> *(可在此处插入应用截图)*
+<img width="834" height="844" alt="image" src="https://github.com/user-attachments/assets/43fe95eb-b2d1-4a14-b127-76a63a5d2bf3" />
+
 
 ---
 
