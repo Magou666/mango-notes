@@ -1,0 +1,44 @@
+{
+  "name": "mango",
+  "productName": "mango",
+  "version": "1.0.0",
+  "description": "Mango - A beautiful sticky notes app",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --mac --dir && rm -rf /Applications/mango.app && cp -r dist/mac-arm64/mango.app /Applications/mango.app",
+    "pack": "electron-builder --mac dmg"
+  },
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.mango.stickynotes",
+    "productName": "mango",
+    "copyright": "Copyright © 2026 mango",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "src/assets/icon.icns",
+      "target": [{ "target": "dir", "arch": ["arm64"] }],
+      "darkModeSupport": true
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "src/main.js"
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "asar": false
+  },
+  "author": "mango",
+  "license": "MIT"
+}

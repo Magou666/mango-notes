@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>mango 面板</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  width:100%;height:100%;
+  background:transparent;overflow:hidden;
+  font-family:-apple-system,'PingFang SC','Helvetica Neue',sans-serif;
+}
+
+/* ── 整体容器 ─────────────────────────────────────────────── */
+.layout{
+  width:100%;height:100%;
+  display:flex;
+  background:#f7f6f2;
+  border-radius:14px;
+  box-shadow:0 8px 40px rgba(0,0,0,0.22),0 2px 10px rgba(0,0,0,0.1);
+  border:1px solid rgba(0,0,0,0.08);
+  overflow:hidden;
+  animation:fadeIn .2s ease-out;
+}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ══════════════════════════════════════════════════════════
+   左侧便签缩略条区域 (仿好用便签)
+═══════════════════════════════════════════════════════════ */
+.note-strip-panel{
+  width:54px;
+  background:#efefeb;
+  border-right:1px solid rgba(0,0,0,0.07);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  overflow:hidden;
+  flex-shrink:0;
+}
+
+/* 顶部 logo 区 */
+.strip-top{
+  width:100%;
+  height:50px;
+  display:flex;align-items:center;justify-content:center;
+  border-bottom:1px solid rgba(0,0,0,0.06);
+  flex-shrink:0;
+  -webkit-app-region:drag;
+  cursor:move;
+}
+.strip-logo{font-size:22px;pointer-events:none}
+
+/* 便签缩略条滚动区 */
+.strip-scroll{
+  flex:1;
+  width:100%;
+  overflow-y:auto;
+  overflow-x:hidden;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:6px 0;
+  gap:4px;
+}
+.strip-scroll::-webkit-scrollbar{width:0}
+
+/* 单个便签缩略条 */
+.strip-item{
+  width:38px;
+  min-height:52px;
+  border-radius:8px;
+  cursor:pointer;
+  position:relative;
+  overflow:hidden;
+  transition:transform .15s,box-shadow .15s,opacity .15s;
+  flex-shrink:0;
+  display:flex;flex-direction:column;
+  border:2px solid transparent;
+}
+.strip-item:hover{
+  transform:scale(1.06) translateX(2px);
+  box-shadow:0 4px 14px rgba(0,0,0,0.18);
+}
+.strip-item.active{
+  border-color:#333;
+  box-shadow:0 4px 14px rgba(0,0,0,0.22);
+  transform:translateX(3px);
+}
+.strip-item.pinned-item::after{
+  content:'📌';
+  font-size:8px;
+  position:absolute;top:2px;right:2px;
+  line-height:1;
+}
+
+/* 便签条头部色块 */
+.strip-header{
+  height:10px;
+  width:100%;
+  flex-shrink:0;
+  border-radius:5px 5px 0 0;
+}
+/* 便签条内容区 */
+.strip-body{
+  flex:1;
+  padding:3px 4px 4px;
+  font-size:7.5px;
+  line-height:1.35;
+  color:rgba(0,0,0,0.55);
+  overflow:hidden;
+  word-break:break-all;
+}
+
+/* 缩略条底部操作 */
+.strip-bottom{
+  width:100%;
+  padding:6px 0 10px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  border-top:1px solid rgba(0,0,0,0.06);
+  flex-shrink:0;
+}
+.strip-icon-btn{
+  width:36px;height:30px;
+  border-radius:7px;
+  border:none;background:transparent;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;
+  transition:background .13s,transform .1s;
+  color:#666;
+}
+.strip-icon-btn:hover{background:rgba(0,0,0,0.08);transform:scale(1.08)}
+.strip-icon-btn.trash-btn.has-items{color:#e53935}
+.strip-icon-btn.active-view{background:rgba(0,0,0,0.1);color:#333}
+
+/* ══════════════════════════════════════════════════════════
+   右侧主内容区
+═══════════════════════════════════════════════════════════ */
+.main-panel{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  background:#f7f6f2;
+}
+
+/* 顶部标题栏 */
+.panel-header{
+  height:50px;
+  padding:0 14px 0 12px;
+  display:flex;align-items:center;gap:8px;
+  background:#f7f6f2;
+  border-bottom:1px solid rgba(0,0,0,0.07);
+  cursor:move;
+  -webkit-app-region:drag;
+  flex-shrink:0;
+}
+.dot-btns{
+  display:flex;gap:5px;
+  -webkit-app-region:no-drag;
+}
+.dot{
+  width:12px;height:12px;
+  border-radius:50%;border:none;
+  cursor:pointer;
+  transition:filter .15s,transform .1s;
+  flex-shrink:0;
+}
+.dot:hover{filter:brightness(.8);transform:scale(1.1)}
+.dot-close{background:#FF5F57}
+.dot-min{background:#FFBD2E}
+.dot-max{background:#28C840}
+
+.header-title{
+  flex:1;
+  font-size:14px;font-weight:600;
+  color:#333;letter-spacing:.3px;
+  pointer-events:none;
+  margin-left:4px;
+}
+.btn-new{
+  -webkit-app-region:no-drag;
+  height:28px;padding:0 12px;
+  background:#333;color:#fff;
+  border:none;border-radius:7px;
+  font-size:12px;font-weight:500;
+  cursor:pointer;
+  display:flex;align-items:center;gap:4px;
+  transition:background .13s,transform .1s;
+  font-family:inherit;
+  white-space:nowrap;
+}
+.btn-new:hover{background:#555;transform:scale(1.03)}
+.btn-new:active{transform:scale(.97)}
+
+/* 搜索栏 */
+.search-bar{
+  padding:8px 12px 6px;
+  flex-shrink:0;
+}
+.search-wrap{
+  display:flex;align-items:center;gap:7px;
+  background:#ededea;
+  border-radius:9px;
+  padding:6px 10px;
+}
+.search-icon{font-size:12px;opacity:.45;flex-shrink:0}
+.search-input{
+  flex:1;border:none;background:transparent;outline:none;
+  font-size:13px;font-family:inherit;color:#333;
+}
+.search-input::placeholder{color:#aaa}
+
+/* 分段/视图控制栏 */
+.view-bar{
+  padding:0 12px 6px;
+  display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;
+}
+.view-tabs{display:flex;gap:2px}
+.view-tab{
+  padding:4px 10px;
+  border-radius:6px;
+  border:none;background:transparent;
+  font-size:12px;font-weight:500;color:#888;
+  cursor:pointer;
+  transition:background .12s,color .12s;
+  font-family:inherit;
+}
+.view-tab:hover{background:rgba(0,0,0,0.06);color:#555}
+.view-tab.active{background:#333;color:#fff}
+.count-badge{
+  font-size:10px;
+  background:rgba(0,0,0,0.09);
+  color:#666;padding:1px 5px;
+  border-radius:10px;margin-left:3px;
+}
+.view-tab.active .count-badge{background:rgba(255,255,255,0.2);color:#fff}
+
+.view-sort-btn{
+  font-size:11px;color:#999;
+  border:none;background:transparent;
+  cursor:pointer;padding:4px 6px;border-radius:5px;
+  transition:background .12s,color .12s;font-family:inherit;
+}
+.view-sort-btn:hover{background:rgba(0,0,0,0.06);color:#555}
+
+/* 便签列表 */
+.notes-list{
+  flex:1;
+  overflow-y:auto;
+  padding:0 10px 10px;
+  display:flex;flex-direction:column;gap:5px;
+}
+.notes-list::-webkit-scrollbar{width:3px}
+.notes-list::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.12);border-radius:2px}
+
+/* 便签卡片 */
+.note-card{
+  border-radius:10px;
+  padding:10px 12px 9px;
+  cursor:pointer;
+  position:relative;
+  display:flex;flex-direction:column;gap:4px;
+  border:1.5px solid rgba(0,0,0,0.06);
+  box-shadow:0 1px 4px rgba(0,0,0,0.05);
+  transition:transform .13s,box-shadow .13s,border-color .13s;
+  animation:cardIn .16s ease-out both;
+  overflow:hidden;
+}
+.note-card:hover{
+  transform:translateY(-1px);
+  box-shadow:0 4px 14px rgba(0,0,0,0.1);
+  border-color:rgba(0,0,0,0.12);
+}
+.note-card.active-card{
+  border-color:rgba(0,0,0,0.3);
+  box-shadow:0 3px 12px rgba(0,0,0,0.12);
+}
+.note-card.deleted-card{opacity:.65}
+@keyframes cardIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* 便签顶部色条 */
+.card-color-accent{
+  position:absolute;top:0;left:0;right:0;
+  height:3px;
+  border-radius:10px 10px 0 0;
+}
+
+/* 便签卡片头部：时间 + 操作 */
+.card-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding-top:2px;
+}
+.card-time{
+  font-size:10px;color:#bbb;font-weight:400;
+  display:flex;align-items:center;gap:4px;
+}
+.card-pin-icon{font-size:9px;opacity:.6}
+.card-actions{
+  display:flex;gap:2px;
+  opacity:0;transition:opacity .13s;
+}
+.note-card:hover .card-actions{opacity:1}
+.ca-btn{
+  padding:2px 6px;border-radius:5px;
+  border:none;background:rgba(0,0,0,0.06);
+  font-size:10px;color:#555;cursor:pointer;
+  transition:background .12s;font-family:inherit;
+}
+.ca-btn:hover{background:rgba(0,0,0,0.12)}
+.ca-btn.del{color:#e53935}
+.ca-btn.del:hover{background:rgba(229,57,53,0.1)}
+
+/* 便签预览文字 */
+.card-preview{
+  font-size:13px;line-height:1.5;color:#333;
+  overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+  word-break:break-word;
+}
+.card-preview.empty-preview{color:#bbb;font-style:italic}
+
+/* 标签行 */
+.card-tags{display:flex;flex-wrap:wrap;gap:3px}
+.card-tag{
+  font-size:10px;color:#666;
+  background:rgba(0,0,0,0.06);
+  padding:1px 6px;border-radius:5px;
+  cursor:pointer;transition:background .12s;
+}
+.card-tag:hover{background:rgba(0,0,0,0.12)}
+
+/* 回收站删除日期 */
+.deleted-at{font-size:10px;color:#e09090}
+
+/* 空状态 */
+.empty-state{
+  flex:1;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;padding:30px;opacity:.4;
+}
+.empty-icon{font-size:44px}
+.empty-text{font-size:13px;color:#666;text-align:center;line-height:1.6}
+
+/* 底部栏：全局透明度 */
+.panel-footer{
+  padding:7px 12px 10px;
+  border-top:1px solid rgba(0,0,0,0.07);
+  flex-shrink:0;
+  display:flex;align-items:center;gap:8px;
+}
+.footer-label{font-size:11px;color:#aaa;white-space:nowrap}
+.opacity-slider{
+  flex:1;-webkit-appearance:none;
+  height:3px;border-radius:2px;
+  background:#ddd;outline:none;cursor:pointer;
+}
+.opacity-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:13px;height:13px;
+  border-radius:50%;background:#555;
+  box-shadow:0 1px 4px rgba(0,0,0,0.2);cursor:pointer;
+}
+.opacity-val{font-size:11px;color:#888;font-weight:500;min-width:28px;text-align:right}
+
+/* 回收站清空按钮 */
+.empty-trash-btn{
+  font-size:11px;color:#e53935;
+  border:1px solid rgba(229,57,53,0.3);
+  background:transparent;
+  border-radius:6px;padding:3px 9px;
+  cursor:pointer;transition:background .12s;font-family:inherit;
+}
+.empty-trash-btn:hover{background:rgba(229,57,53,0.07)}
+
+mark{background:rgba(255,200,50,.35);border-radius:2px;color:inherit}
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- ═══ 左侧便签缩略条 ═══════════════════════════════════════ -->
+  <div class="note-strip-panel">
+
+    <!-- logo -->
+    <div class="strip-top">
+      <span class="strip-logo">🥭</span>
+    </div>
+
+    <!-- 便签缩略条滚动列表 -->
+    <div class="strip-scroll" id="stripScroll"></div>
+
+    <!-- 底部功能按钮 -->
+    <div class="strip-bottom">
+      <button class="strip-icon-btn" id="stripTrashBtn" title="回收站" onclick="setView('trash')">🗑</button>
+    </div>
+
+  </div>
+
+  <!-- ═══ 右侧主区域 ═══════════════════════════════════════════ -->
+  <div class="main-panel">
+
+    <!-- 顶部标题栏 -->
+    <div class="panel-header">
+      <div class="dot-btns">
+        <button class="dot dot-close" onclick="window.close()"></button>
+        <button class="dot dot-min"   onclick="window.close()"></button>
+        <button class="dot dot-max"></button>
+      </div>
+      <div class="header-title" id="headerTitle">我的便签</div>
+      <button class="btn-new" id="btnNew">＋ 新建</button>
+    </div>
+
+    <!-- 搜索栏 -->
+    <div class="search-bar">
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input class="search-input" id="searchInput" placeholder="搜索便签内容、标签…" />
+      </div>
+    </div>
+
+    <!-- 视图切换标签栏 -->
+    <div class="view-bar">
+      <div class="view-tabs" id="viewTabs">
+        <button class="view-tab active" data-view="all">
+          全部<span class="count-badge" id="count-all">0</span>
+        </button>
+        <button class="view-tab" data-view="pinned">
+          置顶<span class="count-badge" id="count-pinned">0</span>
+        </button>
+        <!-- 动态标签按钮由 JS 插入 -->
+      </div>
+      <div id="viewRight" style="display:flex;align-items:center;gap:4px">
+        <button class="view-sort-btn" id="sortBtn">最新↓</button>
+      </div>
+    </div>
+
+    <!-- 便签列表 -->
+    <div class="notes-list" id="notesList"></div>
+
+    <!-- 底部栏 -->
+    <div class="panel-footer" id="panelFooter">
+      <span class="footer-label">透明度</span>
+      <input type="range" class="opacity-slider" id="globalOpacity" min="15" max="100" value="92" />
+      <span class="opacity-val" id="opacityVal">92%</span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+'use strict'
+
+let allNotes = [], themes = [], settings = {}
+let currentView = 'all'   // all | pinned | trash | tag:xxx
+let searchQuery = ''
+let sortNewest = true
+let activeStripId = null  // 左侧缩略条当前高亮的便签 id
+
+// ── 工具函数 ──────────────────────────────────────────────────
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+function highlight(text, q){
+  if(!q) return esc(text)
+  return esc(text).replace(
+    new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),
+    m=>`<mark>${m}</mark>`
+  )
+}
+
+function formatTime(ts){
+  if(!ts) return ''
+  const diff = Date.now() - ts
+  if(diff < 60000)    return '刚刚'
+  if(diff < 3600000)  return Math.floor(diff/60000) + ' 分钟前'
+  if(diff < 86400000) return Math.floor(diff/3600000) + ' 小时前'
+  const d = new Date(ts)
+  const mo = d.getMonth()+1, dd = d.getDate()
+  const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0')
+  return `${mo}/${dd} ${hh}:${mm}`
+}
+
+function getTheme(id){ return themes.find(t=>t.id===id) || {bg:'#FFF9C4',header:'#F9A825'} }
+
+// ── 标签工具 ──────────────────────────────────────────────────
+const TAG_COLORS = ['#5c6bc0','#e91e63','#43a047','#fb8c00','#00897b','#8e24aa','#039be5','#e53935']
+function tagColor(tag){
+  let h=0; for(const c of tag) h=(h*31+c.charCodeAt(0))&0xffff
+  return TAG_COLORS[h % TAG_COLORS.length]
+}
+function getAllTagsLocal(){
+  const map = new Map()
+  allNotes.filter(n=>!n.deleted).forEach(n=>{
+    (n.tags||[]).forEach(t=> map.set(t,(map.get(t)||0)+1))
+  })
+  return [...map.entries()].sort((a,b)=>b[1]-a[1])
+}
+
+// ── 渲染左侧便签缩略条 ──────────────────────────────────────
+function renderStrip(){
+  const scroll = document.getElementById('stripScroll')
+  const activeNotes = allNotes.filter(n=>!n.deleted)
+    .sort((a,b)=> sortNewest ? (b.updatedAt||0)-(a.updatedAt||0) : (a.updatedAt||0)-(b.updatedAt||0))
+
+  scroll.innerHTML = ''
+  activeNotes.forEach(note=>{
+    const theme = getTheme(note.themeId)
+    const item = document.createElement('div')
+    item.className = 'strip-item'
+      + (note.pinned ? ' pinned-item' : '')
+      + (note.id === activeStripId ? ' active' : '')
+    item.style.background = theme.bg
+    item.title = (note.content || '空白便签').slice(0,40)
+    item.innerHTML = `
+      <div class="strip-header" style="background:${theme.header}"></div>
+      <div class="strip-body">${esc((note.content||'').slice(0,60))}</div>
+    `
+    item.addEventListener('click', ()=>{
+      activeStripId = note.id
+      window.stickyAPI.openNote(note.id)
+      renderStrip()
+    })
+    scroll.appendChild(item)
+  })
+
+  // 回收站按钮高亮
+  const trashBtn = document.getElementById('stripTrashBtn')
+  const trashCount = allNotes.filter(n=>n.deleted).length
+  trashBtn.classList.toggle('has-items', trashCount > 0)
+  trashBtn.classList.toggle('active-view', currentView === 'trash')
+  if(trashCount > 0) trashBtn.title = `回收站（${trashCount}）`
+  else trashBtn.title = '回收站'
+}
+
+// ── 渲染视图标签栏（含动态tag） ────────────────────────────
+function renderViewTabs(){
+  const tabs = document.getElementById('viewTabs')
+  const allCount    = allNotes.filter(n=>!n.deleted).length
+  const pinnedCount = allNotes.filter(n=>!n.deleted&&n.pinned).length
+
+  // 更新固定 tab 的数量
+  document.getElementById('count-all').textContent    = allCount
+  document.getElementById('count-pinned').textContent = pinnedCount
+
+  // 清除动态标签 tab（保留 all / pinned）
+  const existingTagBtns = tabs.querySelectorAll('[data-view^="tag:"]')
+  existingTagBtns.forEach(b=>b.remove())
+
+  // 插入 tag 按钮
+  const tagCounts = getAllTagsLocal()
+  tagCounts.slice(0, 5).forEach(([tag, count])=>{  // 最多显示5个
+    const btn = document.createElement('button')
+    btn.className = 'view-tab' + (currentView === `tag:${tag}` ? ' active' : '')
+    btn.dataset.view = `tag:${tag}`
+    btn.style.color = currentView === `tag:${tag}` ? '' : tagColor(tag)
+    btn.innerHTML = `${esc(tag)}<span class="count-badge">${count}</span>`
+    tabs.appendChild(btn)
+  })
+
+  // 同步 active 状态
+  tabs.querySelectorAll('.view-tab').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.view === currentView)
+    if(btn.dataset.view.startsWith('tag:') && btn.dataset.view !== currentView){
+      const tag = btn.dataset.view.slice(4)
+      btn.style.color = tagColor(tag)
+    }
+  })
+}
+
+// ── 切换视图 ──────────────────────────────────────────────────
+function setView(view){
+  currentView = view
+  renderViewTabs()
+  renderNotes()
+
+  // 标题
+  const hd = document.getElementById('headerTitle')
+  const viewRight = document.getElementById('viewRight')
+
+  if(view === 'trash'){
+    hd.textContent = '回收站'
+    viewRight.innerHTML = `<button class="empty-trash-btn" id="emptyTrashBtn">清空回收站</button>`
+    document.getElementById('emptyTrashBtn').addEventListener('click', async ()=>{
+      if(confirm('彻底删除所有回收站内容？此操作不可撤销。')){
+        await window.stickyAPI.emptyTrash()
+      }
+    })
+  } else if(view === 'pinned'){
+    hd.textContent = '📌 置顶便签'
+    resetViewRight()
+  } else if(view.startsWith('tag:')){
+    hd.textContent = '# ' + view.slice(4)
+    resetViewRight()
+  } else {
+    hd.textContent = '我的便签'
+    resetViewRight()
+  }
+
+  renderStrip()
+}
+
+function resetViewRight(){
+  const viewRight = document.getElementById('viewRight')
+  viewRight.innerHTML = `<button class="view-sort-btn" id="sortBtn">${sortNewest?'最新↓':'最早↑'}</button>`
+  document.getElementById('sortBtn').addEventListener('click', ()=>{
+    sortNewest = !sortNewest
+    document.getElementById('sortBtn').textContent = sortNewest ? '最新↓' : '最早↑'
+    renderNotes()
+    renderStrip()
+  })
+}
+
+// ── 渲染便签卡片列表 ──────────────────────────────────────────
+function renderNotes(){
+  const list = document.getElementById('notesList')
+
+  let filtered = allNotes.filter(n=>{
+    if(currentView === 'trash')  return n.deleted
+    if(currentView === 'all')    return !n.deleted
+    if(currentView === 'pinned') return !n.deleted && n.pinned
+    if(currentView.startsWith('tag:')){
+      const tag = currentView.slice(4)
+      return !n.deleted && (n.tags||[]).includes(tag)
+    }
+    return !n.deleted
+  })
+
+  if(searchQuery){
+    const q = searchQuery.toLowerCase()
+    filtered = filtered.filter(n=>
+      n.content.toLowerCase().includes(q) ||
+      (n.tags||[]).some(t=> t.toLowerCase().includes(q))
+    )
+  }
+
+  filtered = [...filtered].sort((a,b)=> sortNewest
+    ? (b.updatedAt||0)-(a.updatedAt||0)
+    : (a.updatedAt||0)-(b.updatedAt||0)
+  )
+
+  list.innerHTML = ''
+
+  if(filtered.length === 0){
+    const icon = currentView === 'trash' ? '🗑' : currentView === 'pinned' ? '📌' : '📋'
+    const msg  = currentView === 'trash' ? '回收站是空的' : currentView === 'pinned' ? '没有置顶便签' : '还没有便签'
+    list.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">${icon}</div>
+      <div class="empty-text">${msg}</div>
+    </div>`
+    return
+  }
+
+  filtered.forEach((note, idx)=>{
+    const theme = getTheme(note.themeId)
+    const card  = document.createElement('div')
+    card.className = 'note-card'
+      + (note.deleted ? ' deleted-card' : '')
+      + (note.id === activeStripId ? ' active-card' : '')
+    card.style.background = theme.bg
+    card.style.animationDelay = `${idx*20}ms`
+
+    const preview = note.content.trim()
+    const tagsHtml = (note.tags||[]).length
+      ? `<div class="card-tags">${(note.tags||[]).map(t=>
+          `<span class="card-tag" data-tag="${esc(t)}">${esc(t)}</span>`).join('')}</div>` : ''
+    const deletedHtml = note.deleted && note.deletedAt
+      ? `<div class="deleted-at">删除于 ${formatTime(note.deletedAt)}</div>` : ''
+
+    let actionsHtml = ''
+    if(currentView === 'trash'){
+      actionsHtml = `
+        <button class="ca-btn" data-action="restore" data-id="${note.id}">还原</button>
+        <button class="ca-btn del" data-action="perm-delete" data-id="${note.id}">彻底删除</button>`
+    } else {
+      actionsHtml = `
+        <button class="ca-btn" data-action="open"  data-id="${note.id}">打开</button>
+        <button class="ca-btn" data-action="pin"   data-id="${note.id}">${note.pinned?'取消置顶':'置顶'}</button>
+        <button class="ca-btn del" data-action="trash" data-id="${note.id}">删除</button>`
+    }
+
+    card.innerHTML = `
+      <div class="card-color-accent" style="background:${theme.header}"></div>
+      <div class="card-head">
+        <div class="card-time">
+          ${note.pinned&&!note.deleted?'<span class="card-pin-icon">📌</span>':''}
+          ${formatTime(note.updatedAt)}
+        </div>
+        <div class="card-actions">${actionsHtml}</div>
+      </div>
+      <div class="card-preview${preview?'':' empty-preview'}">${
+        preview ? highlight(preview, searchQuery) : '空白便签'
+      }</div>
+      ${tagsHtml}
+      ${deletedHtml}
+    `
+
+    // 点击卡片打开便签
+    card.addEventListener('click', e=>{
+      if(e.target.closest('.card-actions')||e.target.closest('.card-tag')) return
+      if(!note.deleted){
+        activeStripId = note.id
+        window.stickyAPI.openNote(note.id)
+        renderStrip()
+        // 高亮当前卡片
+        document.querySelectorAll('.note-card').forEach(c=>c.classList.remove('active-card'))
+        card.classList.add('active-card')
+      }
+    })
+
+    // 标签点击跳转
+    card.querySelectorAll('.card-tag').forEach(chip=>{
+      chip.addEventListener('click', e=>{
+        e.stopPropagation()
+        setView(`tag:${chip.dataset.tag}`)
+      })
+    })
+
+    // 操作按钮
+    card.querySelectorAll('[data-action]').forEach(btn=>{
+      btn.addEventListener('click', async e=>{
+        e.stopPropagation()
+        const { action, id } = btn.dataset
+        if(action==='open')         window.stickyAPI.openNote(id)
+        else if(action==='pin')     window.stickyAPI.togglePin(id)
+        else if(action==='trash')   window.stickyAPI.trashNote(id)
+        else if(action==='restore') window.stickyAPI.restoreNote(id)
+        else if(action==='perm-delete'){
+          if(confirm('彻底删除这条便签？此操作不可撤销。'))
+            window.stickyAPI.deleteNotePermanent(id)
+        }
+      })
+    })
+
+    list.appendChild(card)
+  })
+}
+
+// ── 初始化 ────────────────────────────────────────────────────
+window.stickyAPI.onPanelData(({ notes: n, themes: t, settings: s })=>{
+  allNotes = n || []; themes = t || []; settings = s || {}
+
+  const pct = Math.round((s.globalOpacity ?? .92) * 100)
+  const slider = document.getElementById('globalOpacity')
+  if(slider) { slider.value = pct; document.getElementById('opacityVal').textContent = pct+'%' }
+
+  renderStrip()
+  renderViewTabs()
+  renderNotes()
+})
+
+// ── 事件绑定 ──────────────────────────────────────────────────
+document.getElementById('btnNew').addEventListener('click', ()=> window.stickyAPI.newNoteFromPanel())
+
+document.getElementById('searchInput').addEventListener('input', e=>{
+  searchQuery = e.target.value.trim(); renderNotes()
+})
+
+document.getElementById('globalOpacity').addEventListener('input', e=>{
+  const v = parseInt(e.target.value)
+  document.getElementById('opacityVal').textContent = v+'%'
+  window.stickyAPI.updateSettings({ globalOpacity: v/100 })
+})
+
+// 视图 tab 点击（事件委托）
+document.getElementById('viewTabs').addEventListener('click', e=>{
+  const btn = e.target.closest('.view-tab')
+  if(btn && btn.dataset.view) setView(btn.dataset.view)
+})
+
+document.addEventListener('keydown', e=>{
+  if((e.metaKey||e.ctrlKey) && e.key==='n'){ window.stickyAPI.newNoteFromPanel(); e.preventDefault() }
+  if(e.key==='Escape') window.close()
+  if((e.metaKey||e.ctrlKey) && e.key==='f'){ document.getElementById('searchInput').focus(); e.preventDefault() }
+})
+
+// 每分钟刷新时间显示
+setInterval(()=>{ renderNotes(); renderStrip() }, 60000)
+</script>
+</body>
+</html>

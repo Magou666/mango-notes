@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>便签</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-r:255;--bg-g:249;--bg-b:196;
+  --hd-r:249;--hd-g:168;--hd-b:37;
+  --accent:#F57F17;--text:#333;--placeholder:#aaa;
+  --radius:16px;--alpha:0.92;
+}
+html,body{
+  width:100%;height:100%;background:transparent;overflow:hidden;
+  user-select:none;-webkit-user-select:none;
+  font-family:-apple-system,'PingFang SC','Helvetica Neue',sans-serif;
+}
+.note-wrapper{width:100%;height:100%;display:flex}
+
+/* ── 侧边栏 ─────────────────────────────── */
+.side-bar{
+  width:76px;display:flex;flex-direction:column;
+  padding:50px 0 0 0;flex-shrink:0;overflow:hidden;
+  position:relative;z-index:5;
+}
+.side-scroll{
+  flex:1;overflow-y:auto;overflow-x:hidden;
+  padding:0 6px 4px 4px;display:flex;flex-direction:column;gap:3px;
+}
+.side-scroll::-webkit-scrollbar{width:0}
+.side-item{
+  width:100%;min-height:34px;border-radius:9px;
+  padding:5px 7px 5px 6px;cursor:pointer;
+  display:flex;align-items:center;gap:5px;
+  transition:background .14s,transform .1s;
+  position:relative;flex-shrink:0;
+  /* 禁用浏览器原生拖拽 */
+  -webkit-user-drag:none;
+}
+.side-item:hover{background:rgba(255,255,255,.14);transform:translateX(1px)}
+.side-item.current{background:rgba(255,255,255,.22)}
+.side-item.dragging{opacity:.35;transform:none}
+/* 排序指示线 */
+.side-item.insert-before::before{
+  content:'';position:absolute;top:-2px;left:6px;right:6px;
+  height:2px;background:rgba(255,255,255,.8);border-radius:1px;
+}
+.side-item.insert-after::after{
+  content:'';position:absolute;bottom:-2px;left:6px;right:6px;
+  height:2px;background:rgba(255,255,255,.8);border-radius:1px;
+}
+.side-dot{width:3px;flex-shrink:0;border-radius:2px;opacity:.7;transition:opacity .13s}
+.side-item:hover .side-dot{opacity:1}
+.side-item.current .side-dot{opacity:1;width:4px}
+.side-name{
+  font-size:11px;line-height:1.25;color:rgba(255,255,255,.72);
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;
+  -webkit-box-orient:vertical;word-break:break-all;flex:1;
+  letter-spacing:.1px;transition:color .13s;
+}
+.side-item:hover .side-name{color:rgba(255,255,255,.95)}
+.side-item.current .side-name{color:#fff;font-weight:600}
+.side-footer{padding:6px 6px 10px 6px;flex-shrink:0}
+.side-new-btn{
+  width:100%;height:28px;border-radius:8px;border:none;
+  background:rgba(255,255,255,.12);color:rgba(255,255,255,.65);
+  font-size:16px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .13s,color .13s,transform .1s;
+}
+.side-new-btn:hover{background:rgba(255,255,255,.22);color:#fff;transform:scale(1.04)}
+
+/* ── 拖出提示遮罩 ───────────────────────── */
+.detach-hint{
+  position:fixed;inset:0;display:none;
+  align-items:center;justify-content:center;
+  background:rgba(0,0,0,.22);
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  z-index:9997;border-radius:var(--radius);pointer-events:none;
+  border:2px dashed rgba(255,255,255,.55);
+}
+.detach-hint.show{display:flex}
+.detach-hint-text{
+  background:rgba(0,0,0,.55);color:#fff;border-radius:12px;
+  padding:10px 20px;font-size:14px;font-weight:600;
+}
+
+/* ── 合并提示横幅 ────────────────────────── */
+#mergeBar{
+  position:fixed;bottom:0;left:0;right:0;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  height:44px;z-index:9998;pointer-events:auto;
+  background:rgba(60,190,100,.88);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border-radius:0 0 var(--radius) var(--radius);
+  transform:translateY(100%);
+  transition:transform .2s cubic-bezier(.25,.8,.25,1);
+}
+#mergeBar.show{transform:translateY(0)}
+#mergeBar .merge-icon{font-size:18px}
+#mergeBar .merge-text{color:#fff;font-size:13px;font-weight:600;letter-spacing:.3px}
+#mergeBtnDo{
+  background:rgba(255,255,255,.28);border:none;color:#fff;
+  font-size:12px;font-weight:700;padding:4px 12px;border-radius:8px;
+  cursor:pointer;-webkit-app-region:no-drag;
+  transition:background .12s;
+}
+#mergeBtnDo:hover{background:rgba(255,255,255,.45)}
+
+/* ── 浮动跟随标签（拖拽时） ─────────────── */
+#dragGhost{
+  position:fixed;z-index:99999;pointer-events:none;
+  background:rgba(30,30,30,.85);color:#fff;
+  font-size:12px;padding:5px 12px;border-radius:8px;
+  box-shadow:0 4px 16px rgba(0,0,0,.35);
+  white-space:nowrap;max-width:160px;
+  overflow:hidden;text-overflow:ellipsis;
+  display:none;
+}
+
+/* ── 右键菜单 ───────────────────────────── */
+.ctx-menu{
+  position:fixed;background:rgba(40,40,40,.94);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-radius:11px;padding:5px 0;
+  box-shadow:0 8px 30px rgba(0,0,0,.35);
+  z-index:99998;min-width:140px;display:none;
+  border:1px solid rgba(255,255,255,.1);
+}
+.ctx-menu.open{display:block;animation:ctxIn .1s ease-out}
+@keyframes ctxIn{from{opacity:0;transform:scale(.95) translateY(-4px)}to{opacity:1;transform:none}}
+.ctx-item{
+  padding:7px 14px;font-size:13px;color:rgba(255,255,255,.9);
+  cursor:pointer;display:flex;align-items:center;gap:8px;
+  transition:background .1s;
+}
+.ctx-item:hover{background:rgba(255,255,255,.1)}
+.ctx-item.danger{color:#ff6b6b}
+.ctx-item.danger:hover{background:rgba(255,80,80,.12)}
+.ctx-sep{height:1px;background:rgba(255,255,255,.1);margin:4px 0}
+.side-name-input{
+  flex:1;background:rgba(255,255,255,.15);
+  border:1px solid rgba(255,255,255,.4);border-radius:5px;
+  color:#fff;font-size:11px;padding:2px 5px;
+  outline:none;font-family:inherit;min-width:0;
+}
+
+/* ── 便签卡片 ───────────────────────────── */
+.note-card{
+  flex:1;min-width:0;height:100%;
+  background:rgba(var(--bg-r),var(--bg-g),var(--bg-b),var(--alpha));
+  border-radius:var(--radius);
+  box-shadow:0 8px 32px rgba(0,0,0,.18),0 2px 8px rgba(0,0,0,.08);
+  display:flex;flex-direction:column;overflow:hidden;
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,.45);
+  transition:box-shadow .2s,background .15s;position:relative;
+}
+.note-card:hover{box-shadow:0 14px 44px rgba(0,0,0,.22),0 4px 12px rgba(0,0,0,.1)}
+@keyframes switchIn{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
+.note-card.switching{animation:switchIn .18s ease-out}
+
+.note-header{
+  background:rgba(var(--hd-r),var(--hd-g),var(--hd-b),calc(var(--alpha)*.85+.15));
+  height:44px;padding:0 11px;
+  display:flex;align-items:center;gap:8px;
+  -webkit-app-region:drag;cursor:move;flex-shrink:0;
+  border-radius:var(--radius) var(--radius) 0 0;
+}
+.dot-btns{display:flex;gap:6px;-webkit-app-region:no-drag;position:relative;z-index:10}
+.dot{
+  width:13px;height:13px;border-radius:50%;border:none;
+  cursor:pointer;flex-shrink:0;
+  transition:filter .12s,transform .1s;position:relative;
+}
+.dot::after{content:'';position:absolute;inset:-5px;border-radius:50%}
+.dot:hover{filter:brightness(.8);transform:scale(1.12)}
+.dot:active{transform:scale(.93)}
+.dot-close{background:#FF5F57}
+.dot-min{background:#FFBD2E}
+.dot-pin{background:#28C840}
+.dot-pin.pinned{box-shadow:0 0 0 2.5px rgba(40,200,64,.5)}
+.header-spacer{flex:1}
+.opacity-row{
+  display:flex;align-items:center;gap:5px;
+  -webkit-app-region:no-drag;position:relative;z-index:10;
+}
+.opacity-icon{font-size:11px;opacity:.8}
+.opacity-slider{
+  -webkit-appearance:none;width:68px;height:3px;border-radius:2px;
+  background:rgba(255,255,255,.4);outline:none;cursor:pointer;
+}
+.opacity-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.3);cursor:pointer;
+}
+.theme-btn{
+  width:14px;height:14px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.7);cursor:pointer;
+  -webkit-app-region:no-drag;position:relative;z-index:10;
+  flex-shrink:0;transition:transform .15s;
+}
+.theme-btn:hover{transform:scale(1.22)}
+.color-picker-popup{
+  position:absolute;top:50px;left:11px;
+  background:rgba(255,255,255,.96);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-radius:12px;padding:10px;
+  box-shadow:0 4px 24px rgba(0,0,0,.16);
+  display:none;grid-template-columns:repeat(4,1fr);gap:8px;
+  z-index:9999;border:1px solid rgba(0,0,0,.07);
+}
+.color-picker-popup.open{display:grid}
+.color-dot{
+  width:26px;height:26px;border-radius:50%;cursor:pointer;
+  border:2.5px solid transparent;transition:transform .12s,border-color .12s;
+}
+.color-dot:hover{transform:scale(1.15)}
+.color-dot.active{border-color:rgba(0,0,0,.4)}
+.tag-popup{
+  position:absolute;top:50px;right:11px;
+  background:rgba(255,255,255,.97);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-radius:14px;padding:10px;
+  box-shadow:0 4px 24px rgba(0,0,0,.16);
+  display:none;flex-direction:column;gap:8px;
+  z-index:9999;min-width:158px;border:1px solid rgba(0,0,0,.07);
+}
+.tag-popup.open{display:flex}
+.tag-input-row{display:flex;gap:6px}
+.tag-input{
+  flex:1;padding:5px 8px;
+  border:1.5px solid rgba(102,126,234,.25);border-radius:8px;
+  font-size:12px;font-family:inherit;outline:none;
+  background:rgba(102,126,234,.04);
+}
+.tag-input:focus{border-color:rgba(102,126,234,.55)}
+.tag-add-btn{
+  background:linear-gradient(135deg,#667eea,#764ba2);
+  border:none;border-radius:8px;color:#fff;
+  font-size:12px;padding:5px 10px;cursor:pointer;
+  white-space:nowrap;font-family:inherit;
+}
+.tag-add-btn:hover{filter:brightness(1.08)}
+.tag-list{display:flex;flex-wrap:wrap;gap:5px}
+.tag-chip-note{
+  background:rgba(102,126,234,.1);color:#667eea;
+  border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;
+  border:1px solid rgba(102,126,234,.18);
+  display:flex;align-items:center;gap:4px;
+}
+.tag-chip-del{
+  background:none;border:none;color:#667eea;cursor:pointer;
+  font-size:10px;opacity:.55;padding:0;line-height:1;
+}
+.tag-chip-del:hover{opacity:1}
+.no-tags-hint{font-size:11px;color:#aaa;text-align:center}
+.note-body{
+  flex:1;padding:6px 13px 4px;
+  display:flex;flex-direction:column;gap:4px;overflow:hidden;
+}
+.note-time{font-size:10px;color:var(--accent);opacity:.6;flex-shrink:0}
+.note-tags-bar{display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0}
+.tag-chip-view{
+  background:rgba(var(--hd-r),var(--hd-g),var(--hd-b),.16);
+  color:var(--accent);border-radius:5px;padding:1px 6px;
+  font-size:10px;font-weight:600;
+}
+.note-textarea{
+  flex:1;background:transparent;border:none;outline:none;resize:none;
+  font-size:14px;line-height:1.65;color:var(--text);font-family:inherit;
+  user-select:text;-webkit-user-select:text;overflow-y:auto;cursor:text;
+}
+.note-textarea::placeholder{color:var(--placeholder)}
+.note-textarea::-webkit-scrollbar{width:3px}
+.note-textarea::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12);border-radius:2px}
+.note-footer{
+  padding:3px 11px 9px;
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.char-count{font-size:10px;color:var(--accent);opacity:.5}
+.footer-actions{display:flex;gap:4px}
+.footer-btn{
+  background:none;border:none;cursor:pointer;font-size:14px;
+  opacity:.4;transition:opacity .12s,transform .12s,background .12s;
+  padding:3px 5px;border-radius:6px;
+}
+.footer-btn:hover{opacity:.85;transform:scale(1.14);background:rgba(0,0,0,.06)}
+.footer-btn:active{transform:scale(.95)}
+.footer-btn.tag-active{opacity:.85;background:rgba(102,126,234,.14)}
+body.dark .note-textarea{color:#E0E0E0}
+body.dark .note-textarea::placeholder{color:#555}
+body.dark .tag-chip-view{background:rgba(180,180,180,.14);color:#B0BEC5}
+</style>
+</head>
+<body>
+<div class="note-wrapper">
+  <div class="side-bar" id="sideBar">
+    <div class="side-scroll" id="sideScroll"></div>
+    <div class="side-footer">
+      <button class="side-new-btn" id="sideNewBtn">＋</button>
+    </div>
+  </div>
+
+  <div class="note-card" id="noteCard">
+    <div class="note-header">
+      <div class="dot-btns">
+        <button class="dot dot-close" id="btnClose"></button>
+        <button class="dot dot-min"   id="btnMin"></button>
+        <button class="dot dot-pin"   id="btnPin"></button>
+      </div>
+      <div class="header-spacer"></div>
+      <div class="opacity-row">
+        <span class="opacity-icon">💧</span>
+        <input type="range" class="opacity-slider" id="opacitySlider" min="15" max="100" value="92"/>
+      </div>
+      <button class="theme-btn" id="themeBtn"></button>
+    </div>
+    <div class="color-picker-popup" id="colorPicker"></div>
+    <div class="tag-popup" id="tagPopup">
+      <div class="tag-input-row">
+        <input class="tag-input" id="tagInput" placeholder="输入标签…" maxlength="12"/>
+        <button class="tag-add-btn" id="tagAddBtn">添加</button>
+      </div>
+      <div class="tag-list" id="tagList"></div>
+    </div>
+    <div class="note-body">
+      <div class="note-time" id="noteTime"></div>
+      <div class="note-tags-bar" id="noteTagsBar"></div>
+      <textarea class="note-textarea" id="noteTextarea" placeholder="随手记点什么…" spellcheck="false"></textarea>
+    </div>
+    <div class="note-footer">
+      <span class="char-count" id="charCount">0 字</span>
+      <div class="footer-actions">
+        <button class="footer-btn" id="btnTag"   title="标签">🏷</button>
+        <button class="footer-btn" id="btnNew"   title="新建">✦</button>
+        <button class="footer-btn" id="btnPanel" title="面板">☰</button>
+        <button class="footer-btn" id="btnDel"   title="长按删除">🗑</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="detach-hint" id="detachHint">
+    <div class="detach-hint-text">松开 → 独立窗口</div>
+  </div>
+
+  <!-- 合并提示横幅（独立窗口与其他窗口重叠时出现，松开标题栏后自动合并） -->
+  <div id="mergeBar">
+    <span class="merge-icon">🔗</span>
+    <span class="merge-text">松开标题栏 → 合并到此窗口</span>
+    <button id="mergeBtnDo">立即合并</button>
+  </div>
+</div>
+
+<!-- 拖拽浮动标签（单例，全局复用） -->
+<div id="dragGhost"></div>
+
+<!-- 右键菜单 -->
+<div class="ctx-menu" id="ctxMenu">
+  <div class="ctx-item" id="ctxRename">✏️ 重命名</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="ctxNew">＋ 新建便签</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" id="ctxTrash">🗑 移入回收站</div>
+</div>
+
+<script>
+'use strict'
+const $ = id => document.getElementById(id)
+
+// ── 全局状态 ──────────────────────────────────────────────────
+let noteData = null, themes = [], allNotes = []
+let isDirty = false, saveTimer = null
+let colorPickerOpen = false, tagPopupOpen = false
+let sideOrder = [], ctxTargetId = null
+
+// ── 工具函数 ──────────────────────────────────────────────────
+function fmt(ts) {
+  if (!ts) return ''
+  const d = Date.now() - ts
+  if (d < 60000)    return '刚刚'
+  if (d < 3600000)  return Math.floor(d/60000)   + '分前'
+  if (d < 86400000) return Math.floor(d/3600000)  + '时前'
+  const dt = new Date(ts)
+  return `${dt.getMonth()+1}/${dt.getDate()}`
+}
+function hexRgb(h) {
+  return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]
+}
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+function getTheme(id){ return themes.find(t=>t.id===id)||{bg:'#FFF9C4',header:'#F9A825',accent:'#F57F17'} }
+
+function noteTitle(note) {
+  if (note.title?.trim()) return note.title.trim().slice(0,16)
+  const fl = (note.content||'').split('\n').find(l=>l.trim())
+  if (fl) return fl.trim().slice(0,16)
+  const d = new Date(note.createdAt||note.updatedAt||Date.now())
+  return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+
+function applyTheme(id) {
+  const t = getTheme(id), r = document.documentElement
+  const [br,bg,bb] = hexRgb(t.bg), [hr,hg,hb] = hexRgb(t.header)
+  r.style.setProperty('--bg-r',br); r.style.setProperty('--bg-g',bg); r.style.setProperty('--bg-b',bb)
+  r.style.setProperty('--hd-r',hr); r.style.setProperty('--hd-g',hg); r.style.setProperty('--hd-b',hb)
+  r.style.setProperty('--accent',t.accent)
+  const dk = id==='dark'
+  r.style.setProperty('--text', dk?'#E0E0E0':'#333')
+  r.style.setProperty('--placeholder', dk?'#555':'#aaa')
+  $('themeBtn').style.background = t.header
+  document.body.className = dk?'dark':''
+}
+function applyAlpha(a){ document.documentElement.style.setProperty('--alpha',a) }
+
+function syncOrder() {
+  const ids = allNotes.filter(n=>!n.deleted).map(n=>n.id)
+  sideOrder = [...ids.filter(id=>!sideOrder.includes(id)), ...sideOrder.filter(id=>ids.includes(id))]
+}
+
+// ════════════════════════════════════════════════════════════════
+//  统一拖拽引擎（mousedown → mousemove → mouseup）
+//  完全不使用 HTML5 drag API，彻底解决跨窗口检测问题
+// ════════════════════════════════════════════════════════════════
+const drag = {
+  on: false,        // 拖拽已激活（超过阈值）
+  noteId: null,
+  startCX: 0, startCY: 0,   // 按下时的 clientX/Y
+  startSX: 0, startSY: 0,   // 按下时的 screenX/Y
+  curSX: 0,  curSY: 0,       // 当前屏幕坐标
+  outOfWin: false,
+  pendingId: null,           // mousedown 后记录，超阈值才移入 noteId
+}
+
+// ── 本地缓存：当前窗口便签数量（同步更新，让 dragBegin 同步判断）──
+let winNoteCount = 0
+
+// mousedown 时设置 pendingId（完全同步，不做任何异步操作）
+function dragBegin(e, noteId) {
+  // ── 只剩 1 条时禁止 detach（同步判断本地缓存）──────────────
+  if (winNoteCount <= 1) return
+
+  drag.pendingId = noteId
+  drag.on       = false
+  drag.outOfWin = false
+  drag.startCX  = e.clientX; drag.startCY = e.clientY
+  drag.startSX  = e.screenX; drag.startSY = e.screenY
+  drag.curSX    = e.screenX; drag.curSY   = e.screenY
+}
+
+// 全局 mousemove
+window.addEventListener('mousemove', e => {
+  if (!drag.pendingId) return
+  drag.curSX = e.screenX; drag.curSY = e.screenY
+
+  const dx = e.clientX - drag.startCX
+  const dy = e.clientY - drag.startCY
+
+  // 超过 6px 阈值 → 激活
+  if (!drag.on && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+    drag.on     = true
+    drag.noteId = drag.pendingId
+    // 显示浮动标签
+    const note = allNotes.find(n=>n.id===drag.noteId)
+    const ghost = $('dragGhost')
+    ghost.textContent = note ? noteTitle(note) : '便签'
+    ghost.style.borderLeft = `3px solid ${getTheme(note?.themeId).header}`
+    ghost.style.display = 'block'
+    // 高亮正在拖的 item
+    const item = $('sideScroll').querySelector(`[data-id="${drag.noteId}"]`)
+    if (item) item.classList.add('dragging')
+  }
+
+  if (!drag.on) return
+
+  // 更新浮动标签位置
+  const ghost = $('dragGhost')
+  ghost.style.left = (e.clientX + 14) + 'px'
+  ghost.style.top  = (e.clientY + 6)  + 'px'
+
+  // 检测是否出窗口
+  const out = e.clientX < 0 || e.clientX > window.innerWidth ||
+              e.clientY < 0 || e.clientY > window.innerHeight
+  if (out !== drag.outOfWin) {
+    drag.outOfWin = out
+    $('detachHint').classList.toggle('show', out)
+    ghost.style.opacity = out ? '0' : '1'
+  }
+
+  // 窗口内：计算排序指示线
+  if (!out) {
+    updateInsertIndicator(e.clientY, drag.noteId)
+  } else {
+    clearInsertIndicator()
+  }
+})
+
+// 全局 mouseup
+window.addEventListener('mouseup', async e => {
+  if (!drag.pendingId) return
+
+  const wasActive  = drag.on
+  const noteId     = drag.noteId
+  const outOfWin   = drag.outOfWin
+  const sx         = drag.curSX
+  const sy         = drag.curSY
+
+  // 立刻重置状态，防止重入
+  drag.on = false; drag.pendingId = null; drag.noteId = null; drag.outOfWin = false
+
+  // 清理 UI
+  $('dragGhost').style.display = 'none'
+  $('detachHint').classList.remove('show')
+  document.querySelectorAll('.side-item.dragging').forEach(el => el.classList.remove('dragging'))
+
+  if (!wasActive || !noteId) {
+    clearInsertIndicator()
+    return
+  }
+
+  if (outOfWin) {
+    clearInsertIndicator()
+    // 拖出窗口 → 先检查是否落入另一便签窗口（合并），否则新建独立窗口
+    await window.stickyAPI.detachOrMerge(noteId, sx, sy)
+  } else {
+    // 窗口内 → 排序
+    applySort(e.clientY, noteId)
+  }
+})
+
+// 排序指示线
+let insertTarget = null, insertAfter = false
+function updateInsertIndicator(clientY, fromId) {
+  clearInsertIndicator()
+  const items = [...$('sideScroll').querySelectorAll('.side-item')]
+  for (const item of items) {
+    if (item.dataset.id === fromId) continue
+    const rect = item.getBoundingClientRect()
+    const mid  = rect.top + rect.height / 2
+    if (clientY < rect.bottom) {
+      insertTarget = item.dataset.id
+      insertAfter  = clientY >= mid
+      item.classList.add(insertAfter ? 'insert-after' : 'insert-before')
+      return
+    }
+  }
+  // 拖到最末尾
+  if (items.length) {
+    const last = items[items.length - 1]
+    if (last.dataset.id !== fromId) {
+      insertTarget = last.dataset.id
+      insertAfter  = true
+      last.classList.add('insert-after')
+    }
+  }
+}
+function clearInsertIndicator() {
+  document.querySelectorAll('.side-item.insert-before,.side-item.insert-after')
+    .forEach(el => { el.classList.remove('insert-before','insert-after') })
+  insertTarget = null
+}
+function applySort(clientY, fromId) {
+  updateInsertIndicator(clientY, fromId)
+  if (!insertTarget) { clearInsertIndicator(); return }
+  const toId = insertTarget, after = insertAfter
+  clearInsertIndicator()
+  const fi = sideOrder.indexOf(fromId)
+  if (fi === -1) return
+  sideOrder.splice(fi, 1)
+  let ti = sideOrder.indexOf(toId)
+  if (ti === -1) return
+  sideOrder.splice(after ? ti+1 : ti, 0, fromId)
+  renderSideList()
+}
+
+// ── 渲染侧边栏 ────────────────────────────────────────────────
+function renderSideList() {
+  syncOrder()
+  const scroll = $('sideScroll')
+  scroll.innerHTML = ''
+  sideOrder
+    .map(id => allNotes.find(n=>n.id===id))
+    .filter(Boolean)
+    .slice(0, 30)
+    .forEach(note => {
+      const isCur = note.id === noteData?.id
+      const thm   = getTheme(note.themeId)
+      const item  = document.createElement('div')
+      item.className  = 'side-item' + (isCur ? ' current' : '')
+      item.dataset.id = note.id
+
+      item.innerHTML = `
+        <div class="side-dot" style="background:${thm.header};height:${isCur?24:18}px"></div>
+        <div class="side-name">${esc(noteTitle(note))}</div>
+      `
+
+      // 点击切换
+      if (!isCur) {
+        item.addEventListener('click', async e => {
+          if (e.target.tagName === 'INPUT') return
+          if (drag.on) return  // 拖拽中忽略点击
+          if (isDirty) {
+            clearTimeout(saveTimer)
+            await window.stickyAPI.updateNote(noteData.id, { content: $('noteTextarea').value })
+            isDirty = false
+          }
+          await window.stickyAPI.switchNote(noteData.id, note.id)
+        })
+      }
+
+      // 右键
+      item.addEventListener('contextmenu', e => {
+        e.preventDefault(); e.stopPropagation()
+        showCtxMenu(e.clientX, e.clientY, note.id)
+      })
+
+      // mousedown 启动拖拽引擎
+      item.addEventListener('mousedown', e => {
+        if (e.button !== 0) return
+        dragBegin(e, note.id)
+      })
+
+      scroll.appendChild(item)
+    })
+}
+
+// ── 右键菜单 ─────────────────────────────────────────────────
+function showCtxMenu(x, y, id) {
+  ctxTargetId = id
+  const m = $('ctxMenu'); m.classList.add('open')
+  m.style.left = Math.min(x, window.innerWidth  - 155) + 'px'
+  m.style.top  = Math.min(y, window.innerHeight - 115) + 'px'
+}
+function hideCtxMenu(){ $('ctxMenu').classList.remove('open'); ctxTargetId = null }
+
+$('ctxRename').addEventListener('click', () => {
+  const id = ctxTargetId; hideCtxMenu(); if (!id) return
+  const item = $('sideScroll').querySelector(`[data-id="${id}"]`); if (!item) return
+  const nameEl = item.querySelector('.side-name')
+  const note = allNotes.find(n=>n.id===id); if (!note) return
+  const cur = noteTitle(note)
+  const inp = document.createElement('input')
+  inp.className='side-name-input'; inp.value=cur; inp.maxLength=20
+  nameEl.replaceWith(inp); inp.focus(); inp.select()
+  const commit = async () => {
+    const v = inp.value.trim()
+    if (v && v !== cur) {
+      await window.stickyAPI.renameNote(id, v)
+      const n = allNotes.find(n=>n.id===id); if(n) n.title=v
+    }
+    renderSideList()
+  }
+  inp.addEventListener('blur', commit)
+  inp.addEventListener('keydown', e => {
+    if (e.key==='Enter'){e.preventDefault();inp.blur()}
+    if (e.key==='Escape'){inp.value=cur;inp.blur()}
+    e.stopPropagation()
+  })
+  inp.addEventListener('click', e => e.stopPropagation())
+  inp.addEventListener('mousedown', e => e.stopPropagation())  // 防止触发拖拽
+})
+
+$('ctxNew').addEventListener('click', () => { hideCtxMenu(); window.stickyAPI.createNote() })
+
+$('ctxTrash').addEventListener('click', async () => {
+  const id = ctxTargetId; hideCtxMenu(); if (!id) return
+  if (isDirty) {
+    clearTimeout(saveTimer)
+    await window.stickyAPI.updateNote(noteData.id, {content:$('noteTextarea').value})
+    isDirty = false
+  }
+  const activeInWin = allNotes.filter(n=>!n.deleted)
+  if (activeInWin.length <= 1) {
+    // 最后一条便签，删除后直接关窗口
+    await window.stickyAPI.trashNote(id)
+    window.stickyAPI.closeNoteWindow(id)
+    return
+  }
+  // 还有其他便签：如果删的是当前显示的那条，先切换
+  if (id === noteData?.id) {
+    const others = sideOrder.filter(s=>s!==id)
+    if (others.length) await window.stickyAPI.switchNote(noteData.id, others[0])
+  }
+  window.stickyAPI.trashNote(id)
+})
+
+document.addEventListener('click', e => {
+  if (!$('ctxMenu').contains(e.target)) hideCtxMenu()
+  if (colorPickerOpen && !$('colorPicker').contains(e.target)) toggleColorPicker(false)
+  if (tagPopupOpen    && !$('tagPopup').contains(e.target))    toggleTagPopup(false)
+})
+document.addEventListener('contextmenu', e => {
+  if (!e.target.closest('.side-item')) hideCtxMenu()
+})
+$('ctxMenu').addEventListener('click', e => e.stopPropagation())
+
+// ── 加载便签 ──────────────────────────────────────────────────
+function loadNoteIntoUI(note) {
+  noteData = note
+  const card = $('noteCard')
+  card.classList.remove('switching')
+  void card.offsetWidth
+  card.classList.add('switching')
+  setTimeout(()=>card.classList.remove('switching'), 220)
+  applyTheme(note.themeId); buildColorPicker()
+  const a = note.opacity??0.92; applyAlpha(a)
+  $('opacitySlider').value   = Math.round(a*100)
+  $('noteTextarea').value    = note.content||''
+  $('charCount').textContent = $('noteTextarea').value.length+' 字'
+  $('noteTime').textContent  = fmt(note.updatedAt)
+  $('btnPin').classList.toggle('pinned', note.pinned??false)
+  renderTagsBar(); renderSideList(); isDirty=false
+}
+
+// ── 颜色选择器 ───────────────────────────────────────────────
+function buildColorPicker() {
+  const p = $('colorPicker'); p.innerHTML=''
+  themes.forEach(t => {
+    const d=document.createElement('div')
+    d.className='color-dot'+(noteData?.themeId===t.id?' active':'')
+    d.style.background=t.header
+    d.addEventListener('click', e => {
+      e.stopPropagation(); if(!noteData)return
+      noteData.themeId=t.id; applyTheme(t.id)
+      window.stickyAPI.updateNote(noteData.id,{themeId:t.id})
+      buildColorPicker(); toggleColorPicker(false)
+    })
+    p.appendChild(d)
+  })
+}
+function toggleColorPicker(f){
+  colorPickerOpen = f!==undefined?f:!colorPickerOpen
+  $('colorPicker').className='color-picker-popup'+(colorPickerOpen?' open':'')
+  if(colorPickerOpen){tagPopupOpen=false;$('tagPopup').className='tag-popup'}
+}
+
+// ── 标签管理 ─────────────────────────────────────────────────
+function renderTagsBar(){
+  $('noteTagsBar').innerHTML=(noteData?.tags||[]).map(t=>`<span class="tag-chip-view">${esc(t)}</span>`).join('')
+}
+function renderTagPopup(){
+  const tags=noteData?.tags||[], list=$('tagList')
+  if(!tags.length){list.innerHTML='<span class="no-tags-hint">还没有标签</span>';return}
+  list.innerHTML=tags.map(t=>`<span class="tag-chip-note">${esc(t)}<button class="tag-chip-del" data-tag="${esc(t)}">✕</button></span>`).join('')
+  list.querySelectorAll('.tag-chip-del').forEach(btn=>btn.addEventListener('click',async e=>{
+    e.stopPropagation()
+    await window.stickyAPI.removeTag(noteData.id,btn.dataset.tag)
+    noteData.tags=(noteData.tags||[]).filter(t=>t!==btn.dataset.tag)
+    renderTagsBar();renderTagPopup()
+  }))
+}
+function toggleTagPopup(f){
+  tagPopupOpen=f!==undefined?f:!tagPopupOpen
+  $('tagPopup').className='tag-popup'+(tagPopupOpen?' open':'')
+  $('btnTag').classList.toggle('tag-active',tagPopupOpen)
+  if(tagPopupOpen){colorPickerOpen=false;$('colorPicker').className='color-picker-popup';renderTagPopup();$('tagInput').focus()}
+}
+
+// ── 自动保存 ─────────────────────────────────────────────────
+function autoSave(){
+  if(!isDirty||!noteData)return
+  clearTimeout(saveTimer)
+  saveTimer=setTimeout(()=>{
+    window.stickyAPI.updateNote(noteData.id,{content:$('noteTextarea').value})
+    isDirty=false; renderSideList()
+  },600)
+}
+
+// ── IPC ──────────────────────────────────────────────────────
+window.stickyAPI.onNoteData(({note,themes:t})=>{
+  if(t?.length) themes=t
+  const i=allNotes.findIndex(n=>n.id===note.id)
+  if(i===-1) allNotes=[note,...allNotes]; else allNotes[i]=note
+  loadNoteIntoUI(note)
+})
+window.stickyAPI.onNotesUpdate(({notes:n,themes:t})=>{
+  allNotes=n||[]; if(t?.length) themes=t
+  // 同步更新本地 note 数量缓存，供 dragBegin 同步判断
+  winNoteCount = (allNotes||[]).filter(n2=>!n2.deleted).length
+  renderSideList()
+})
+
+// ── 合并候选监听 ────────────────────────────────────────────
+let mergeTargetNoteId = null
+window.stickyAPI.onMergeCandidate(({ found, targetNoteId }) => {
+  mergeTargetNoteId = found ? targetNoteId : null
+  $('mergeBar').classList.toggle('show', found)
+})
+
+$('mergeBtnDo').addEventListener('click', async () => {
+  if (!mergeTargetNoteId || !noteData) return
+  const tid = mergeTargetNoteId
+  mergeTargetNoteId = null
+  $('mergeBar').classList.remove('show')
+  await window.stickyAPI.mergeNote(noteData.id, tid)
+})
+
+// ── 按钮 ─────────────────────────────────────────────────────
+$('btnClose').addEventListener('click',()=>{if(noteData)window.stickyAPI.closeNoteWindow(noteData.id)})
+$('btnMin').addEventListener('click',()=>window.stickyAPI.minimizeNote(noteData?.id))
+$('btnPin').addEventListener('click',()=>{
+  if(!noteData)return
+  window.stickyAPI.togglePin(noteData.id)
+  noteData.pinned=!noteData.pinned
+  $('btnPin').classList.toggle('pinned',noteData.pinned)
+})
+$('opacitySlider').addEventListener('input', e=>applyAlpha(parseInt(e.target.value)/100))
+$('opacitySlider').addEventListener('change',e=>{if(noteData)window.stickyAPI.setOpacity(noteData.id,parseInt(e.target.value)/100)})
+$('themeBtn').addEventListener('click',e=>{e.stopPropagation();toggleColorPicker()})
+$('btnTag').addEventListener('click',e=>{e.stopPropagation();toggleTagPopup()})
+$('colorPicker').addEventListener('click',e=>e.stopPropagation())
+$('tagPopup').addEventListener('click',e=>e.stopPropagation())
+
+async function doAddTag(){
+  const v=$('tagInput').value.trim(); if(!v||!noteData)return
+  await window.stickyAPI.addTag(noteData.id,v)
+  noteData.tags=[...new Set([...(noteData.tags||[]),v])]
+  $('tagInput').value=''; renderTagsBar(); renderTagPopup()
+}
+$('tagAddBtn').addEventListener('click',doAddTag)
+$('tagInput').addEventListener('keydown',e=>{if(e.key==='Enter')doAddTag()})
+
+$('noteTextarea').addEventListener('input',()=>{
+  $('charCount').textContent=$('noteTextarea').value.length+' 字'
+  isDirty=true; autoSave()
+  if(noteData){noteData.updatedAt=Date.now();$('noteTime').textContent=fmt(noteData.updatedAt)}
+})
+
+$('btnNew').addEventListener('click',()=>window.stickyAPI.createNote())
+$('sideNewBtn').addEventListener('click',()=>window.stickyAPI.createNote())
+$('btnPanel').addEventListener('click',()=>window.stickyAPI.openPanel())
+
+async function doTrashCurrent() {
+  if (!noteData) return
+  const id = noteData.id
+  if (isDirty) {
+    clearTimeout(saveTimer)
+    await window.stickyAPI.updateNote(id, {content:$('noteTextarea').value})
+    isDirty = false
+  }
+  const activeInWin = allNotes.filter(n=>!n.deleted)
+  if (activeInWin.length <= 1) {
+    // 最后一条便签，删除后直接关窗口
+    await window.stickyAPI.trashNote(id)
+    window.stickyAPI.closeNoteWindow(id)
+    return
+  }
+  // 还有其他便签：先切换再删
+  const others = sideOrder.filter(s=>s!==id)
+  if (others.length) await window.stickyAPI.switchNote(id, others[0])
+  window.stickyAPI.trashNote(id)
+}
+
+let delTimer=null
+$('btnDel').addEventListener('mousedown',()=>{delTimer=setTimeout(doTrashCurrent,800)})
+$('btnDel').addEventListener('mouseup',()=>clearTimeout(delTimer))
+$('btnDel').addEventListener('mouseleave',()=>clearTimeout(delTimer))
+$('btnDel').addEventListener('dblclick',doTrashCurrent)
+
+document.addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key==='n')window.stickyAPI.createNote()
+})
+setInterval(()=>{if(noteData)$('noteTime').textContent=fmt(noteData.updatedAt)},60000)
+</script>
+</body>
+</html>
